@@ -15,6 +15,7 @@ type Reveal = {
 type Room = {
   room_id: string;
   code: string;
+  mode: "collective" | "deception";
 };
 
 type Accusation = {
@@ -24,6 +25,14 @@ type Accusation = {
   method: string;
   explanation: string;
   author?: string;
+};
+
+type DeceptionResult = {
+  mode: "collective" | "deception";
+  deceiver_name?: string;
+  correct_accusations?: number;
+  total_accusations?: number;
+  winner?: "investigators" | "deceiver";
 };
 
 function getErrorMessage(err: unknown): string {
@@ -54,13 +63,16 @@ export default function RevealPage() {
   const [room, setRoom] = useState<Room | null>(null);
   const [reveal, setReveal] = useState<Reveal | null>(null);
   const [accusations, setAccusations] = useState<Accusation[]>([]);
+  const [deceptionResult, setDeceptionResult] =
+    useState<DeceptionResult | null>(null);
+  const [deceptionError, setDeceptionError] = useState("");
   const [userId, setUserId] = useState("");
   const [hostId, setHostId] = useState("");
   const [loading, setLoading] = useState(true);
   const [revealing, setRevealing] = useState(false);
   const [error, setError] = useState("");
 
-  const loadResults = useCallback(async (roomId: string) => {
+  const loadResults = useCallback(async (roomId: string, mode: string) => {
     const { data, error } = await supabase.rpc("get_case_reveal", {
       p_room_id: roomId,
     });
@@ -98,11 +110,30 @@ export default function RevealPage() {
         author: playerMap.get(item.user_id) || "Detective",
       }))
     );
+
+    // Deception results are requested only after the case is revealed.
+    if (mode === "deception") {
+      const { data: resultData, error: resultError } =
+        await supabase.rpc("get_deception_results", {
+          p_room_id: roomId,
+        });
+
+      if (resultError) {
+        console.error("DECEPTION RESULTS ERROR:", resultError);
+        setDeceptionResult(null);
+        setDeceptionError(getErrorMessage(resultError));
+      } else {
+        setDeceptionResult(resultData as DeceptionResult);
+        setDeceptionError("");
+      }
+    } else {
+      setDeceptionResult(null);
+      setDeceptionError("");
+    }
   }, []);
 
   useEffect(() => {
     let active = true;
-
     let channel: ReturnType<typeof supabase.channel> | null = null;
 
     async function initialise() {
@@ -125,7 +156,7 @@ export default function RevealPage() {
 
         const { data: roomData, error: roomError } = await supabase
           .from("rooms")
-          .select("host_id, status")
+          .select("host_id, status, mode")
           .eq("id", parsed.room_id)
           .single();
 
@@ -133,15 +164,18 @@ export default function RevealPage() {
 
         if (!active) return;
 
+        const roomMode =
+          roomData.mode === "deception" ? "deception" : "collective";
+
         setRoom({
           room_id: parsed.room_id,
           code: parsed.code || "",
+          mode: roomMode,
         });
 
         setUserId(userData.user.id);
         setHostId(roomData.host_id);
 
-        // Listen for the host changing the room status to finished.
         channel = supabase
           .channel(`reveal-room-${parsed.room_id}`)
           .on(
@@ -158,7 +192,7 @@ export default function RevealPage() {
               if (payload.new.status === "finished") {
                 try {
                   setError("");
-                  await loadResults(parsed.room_id);
+                  await loadResults(parsed.room_id, roomMode);
                 } catch (err) {
                   console.error("AUTOMATIC REVEAL ERROR:", err);
 
@@ -175,9 +209,9 @@ export default function RevealPage() {
             }
           });
 
-        // Also handle a reveal that happened just before subscription.
+        // Handle a reveal that happened before the subscription started.
         if (roomData.status === "finished") {
-          await loadResults(parsed.room_id);
+          await loadResults(parsed.room_id, roomMode);
         } else {
           const { data: latestRoom, error: latestError } =
             await supabase
@@ -189,7 +223,7 @@ export default function RevealPage() {
           if (latestError) throw latestError;
 
           if (latestRoom.status === "finished") {
-            await loadResults(parsed.room_id);
+            await loadResults(parsed.room_id, roomMode);
           }
         }
       } catch (err) {
@@ -237,8 +271,7 @@ export default function RevealPage() {
 
       if (revealError) throw revealError;
 
-      // The host also loads the result immediately.
-      await loadResults(room.room_id);
+      await loadResults(room.room_id, room.mode);
     } catch (err) {
       console.error("REVEAL CASE ERROR:", err);
       setError(getErrorMessage(err));
@@ -350,6 +383,69 @@ export default function RevealPage() {
                 </div>
               </div>
             </section>
+
+            {room?.mode === "deception" && (
+              <section className="mt-8 rounded-2xl border border-[#c7a9bd]/30 bg-white/[0.035] p-7 md:p-9">
+                <p className="text-xs tracking-[0.3em] text-[#c7a9bd]">
+                  THE DECEPTION ROUND
+                </p>
+
+                <h2 className="text-3xl font-serif mt-3">
+                  The hidden role is exposed.
+                </h2>
+
+                {deceptionError && (
+                  <p className="mt-4 text-sm text-red-300 leading-6 break-words">
+                    The game result could not be loaded: {deceptionError}
+                  </p>
+                )}
+
+                {deceptionResult?.mode === "deception" && (
+                  <>
+                    <div className="mt-6 border-t border-white/10 pt-6">
+                      <p className="text-xs tracking-widest text-[#c7a9bd]">
+                        THE DECEIVER WAS
+                      </p>
+
+                      <p className="text-3xl font-serif mt-3">
+                        {deceptionResult.deceiver_name || "Unknown player"}
+                      </p>
+                    </div>
+
+                    <div className="mt-6">
+                      <p className="text-xs tracking-widest text-[#c7a9bd]">
+                        INVESTIGATORS' CORRECT ACCUSATIONS
+                      </p>
+
+                      <p className="text-2xl mt-2">
+                        {deceptionResult.correct_accusations ?? 0}
+                        <span className="text-white/40 text-base">
+                          {" "} / {deceptionResult.total_accusations ?? 0}
+                        </span>
+                      </p>
+                    </div>
+
+                    <div className="mt-6 rounded-xl bg-white/[0.04] p-5">
+                      <p className="text-xs tracking-widest text-[#c7a9bd]">
+                        FINAL WINNER
+                      </p>
+
+                      <h3 className="text-2xl font-serif mt-2">
+                        {deceptionResult.winner === "investigators"
+                          ? "The Investigators"
+                          : "The Deceiver"}
+                      </h3>
+
+                      <p className="text-sm text-white/50 mt-2 leading-6">
+                        {deceptionResult.winner === "investigators"
+                          ? "The investigators identified the culprit more often than not. The truth prevailed."
+                          : "The investigators failed to secure a majority of correct accusations. The Deceiver wins this round."}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </section>
+            )}
 
             <section className="mt-10">
               <p className="text-xs tracking-[0.3em] text-[#c7a9bd]">

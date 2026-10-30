@@ -1,36 +1,120 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NEXORA — The Mystery Begins
 
-## Getting Started
+**A multiplayer cooperative mystery and social deduction game.**
 
-First, run the development server:
+NEXORA brings players together to investigate a mysterious disappearance. Each player receives private information, discovers clues, shares evidence, discusses theories and submits accusations. But in Deception Mode, one player has a secret objective.
+
+## Game Modes
+
+### 1. The Collective
+Work together as a team of detectives. Each player receives different private evidence, encouraging communication and collaboration to solve the case.
+
+### 2. The Deception
+One player is secretly assigned the role of the Deceiver. Everyone else investigates while the Deceiver attempts to mislead the group without changing or fabricating evidence.
+
+## Features
+
+- Multiplayer rooms with unique room codes
+- Support for 3–6 players
+- Private evidence assigned to individual players
+- Evidence sharing and a shared case file
+- Real-time multiplayer chat
+- Collaborative case board and theory connections
+- Private accusations before the final reveal
+- Secret Deceiver role and private role instructions
+- Final culprit, motive, method and timeline reveal
+- Deception Mode winner calculation
+- Real-time room updates across player sessions
+
+## The First Mystery: The Missing Guest
+
+A guest disappears from a luxury hotel at midnight. The hotel claims the guest checked out, but the available evidence tells a different story.
+
+Players investigate four suspects, examine evidence and reconstruct the events of the night.
+
+## Tech Stack
+
+- **Frontend:** Next.js, React, TypeScript
+- **Styling:** Tailwind CSS
+- **Backend and Database:** Supabase
+- **Authentication:** Supabase Anonymous Authentication
+- **Real-time Features:** Supabase Realtime
+- **Deployment:** Vercel
+
+## Run Locally
+
+### Prerequisites
+- Node.js
+- npm
+- A Supabase project configured with the NEXORA database schema, policies and RPC functions
+
+### Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/dhanvi1015/nexora.git
+cd nexora
+```
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Create a `.env.local` file in the project root:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_publishable_key
+```
+
+Enable anonymous sign-ins in Supabase Authentication and configure the required database tables, Row Level Security policies and RPC functions.
+
+Start the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```text
+nexora/
+├── app/
+│   ├── accusation/
+│   ├── board/
+│   ├── game/
+│   ├── lobby/
+│   ├── play/
+│   ├── reveal/
+│   └── suspects/
+├── lib/
+│   ├── auth.ts
+│   ├── rooms.ts
+│   └── supabase.ts
+├── public/
+├── .env.local
+└── README.md
+```
 
-## Learn More
+## Security
 
-To learn more about Next.js, take a look at the following resources:
+NEXORA uses Supabase Row Level Security and server-side database functions to protect private evidence, secret roles and unrevealed accusations. Sensitive game information is intended to become visible only at the appropriate stage of the investigation.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Never commit `.env.local` or private credentials to the repository.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Live Demo
 
-## Deploy on Vercel
+[Play NEXORA](https://nexora-mystery.vercel.app/)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Repository
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+[GitHub — dhanvi1015/nexora](https://github.com/dhanvi1015/nexora)
+
+---
+
+*Built for the OpenAI × Handshake Multiplayer Game Challenge.*

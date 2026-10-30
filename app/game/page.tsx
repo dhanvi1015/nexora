@@ -33,6 +33,11 @@ type Player = {
   display_name: string;
 };
 
+type PlayerRole = {
+  role: "investigator" | "deceiver";
+  private_instruction: string;
+};
+
 export default function GamePage() {
   const router = useRouter();
 
@@ -42,6 +47,7 @@ export default function GamePage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [userId, setUserId] = useState("");
+  const [playerRole, setPlayerRole] = useState<PlayerRole | null>(null);
   const [messageText, setMessageText] = useState("");
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
@@ -65,10 +71,36 @@ export default function GamePage() {
     setRoom((previous) => {
       if (!previous) return previous;
 
-      const updated = { ...previous, status: data.status };
+      const updated = {
+        ...previous,
+        code: data.code,
+        mode: data.mode,
+        status: data.status,
+      };
+
       sessionStorage.setItem("nexora_room", JSON.stringify(updated));
 
       return updated;
+    });
+  }, []);
+
+  const loadMyRole = useCallback(async (roomId: string) => {
+    const { data, error } = await supabase.rpc("get_my_role", {
+      p_room_id: roomId,
+    });
+
+    if (error) throw error;
+
+    if (
+      !data ||
+      (data.role !== "investigator" && data.role !== "deceiver")
+    ) {
+      throw new Error("Your secret role could not be loaded. Please refresh.");
+    }
+
+    setPlayerRole({
+      role: data.role,
+      private_instruction: data.private_instruction || "",
     });
   }, []);
 
@@ -155,6 +187,22 @@ export default function GamePage() {
 
         if (!active) return;
 
+        const { data: currentRoom, error: roomError } = await supabase
+          .from("rooms")
+          .select("mode")
+          .eq("id", parsedRoom.room_id)
+          .single();
+
+        if (roomError) throw roomError;
+
+        if (currentRoom.mode === "deception") {
+          await loadMyRole(parsedRoom.room_id);
+        } else {
+          setPlayerRole(null);
+        }
+
+        if (!active) return;
+
         await Promise.all([
           loadEvidence(parsedRoom.room_id),
           loadMessages(parsedRoom.room_id),
@@ -227,7 +275,7 @@ export default function GamePage() {
         supabase.removeChannel(channel);
       }
     };
-  }, [loadRoom, loadEvidence, loadMessages]);
+  }, [loadRoom, loadMyRole, loadEvidence, loadMessages]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -240,14 +288,12 @@ export default function GamePage() {
     setError("");
 
     try {
-      // Start the investigation and create the evidence.
       const { error: startError } = await supabase.rpc("start_game", {
         p_room_id: room.room_id,
       });
 
       if (startError) throw startError;
 
-      // Create the four suspect profiles.
       const { error: suspectsError } = await supabase.rpc(
         "setup_suspects",
         {
@@ -257,7 +303,6 @@ export default function GamePage() {
 
       if (suspectsError) throw suspectsError;
 
-      // Store the fixed solution securely on the server.
       const { error: solutionError } = await supabase.rpc(
         "setup_case_solution",
         {
@@ -268,6 +313,10 @@ export default function GamePage() {
       if (solutionError) throw solutionError;
 
       await loadRoom(room.room_id);
+
+      if (room.mode === "deception") {
+        await loadMyRole(room.room_id);
+      }
 
       await Promise.all([
         loadEvidence(room.room_id),
@@ -282,8 +331,6 @@ export default function GamePage() {
           : "Could not start the case."
       );
 
-      // Refresh room status in case the game started
-      // but one of the additional setup calls failed.
       if (room) {
         await loadRoom(room.room_id).catch(console.error);
       }
@@ -460,6 +507,42 @@ export default function GamePage() {
 
         {room.status === "playing" && (
           <>
+            {room.mode === "deception" && (
+              <section
+                className={`mt-7 rounded-2xl border p-6 md:p-7 ${
+                  playerRole?.role === "deceiver"
+                    ? "border-[#c78da8]/40 bg-[#8d4567]/10"
+                    : "border-[#c7a9bd]/30 bg-[#c7a9bd]/[0.06]"
+                }`}
+              >
+                <p className="text-[10px] tracking-[0.3em] text-[#c7a9bd]">
+                  YOUR SECRET ROLE · PRIVATE
+                </p>
+
+                {!playerRole ? (
+                  <p className="mt-3 text-sm text-white/50">
+                    Loading your confidential role...
+                  </p>
+                ) : (
+                  <>
+                    <h2 className="text-2xl md:text-3xl font-serif mt-3">
+                      {playerRole.role === "deceiver"
+                        ? "The Deceiver"
+                        : "The Investigator"}
+                    </h2>
+
+                    <p className="text-sm leading-7 text-white/70 mt-3">
+                      {playerRole.private_instruction}
+                    </p>
+
+                    <p className="text-xs text-white/35 mt-4">
+                      Keep this card private. Other players cannot see your role.
+                    </p>
+                  </>
+                )}
+              </section>
+            )}
+
             <nav className="mt-6 flex flex-wrap gap-3">
               <button
                 onClick={() => router.push("/suspects")}
