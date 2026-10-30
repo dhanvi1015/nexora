@@ -103,6 +103,8 @@ export default function RevealPage() {
   useEffect(() => {
     let active = true;
 
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
     async function initialise() {
       try {
         const saved = sessionStorage.getItem("nexora_room");
@@ -139,8 +141,56 @@ export default function RevealPage() {
         setUserId(userData.user.id);
         setHostId(roomData.host_id);
 
+        // Listen for the host changing the room status to finished.
+        channel = supabase
+          .channel(`reveal-room-${parsed.room_id}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "rooms",
+              filter: `id=eq.${parsed.room_id}`,
+            },
+            async (payload) => {
+              if (!active) return;
+
+              if (payload.new.status === "finished") {
+                try {
+                  setError("");
+                  await loadResults(parsed.room_id);
+                } catch (err) {
+                  console.error("AUTOMATIC REVEAL ERROR:", err);
+
+                  if (active) {
+                    setError(getErrorMessage(err));
+                  }
+                }
+              }
+            }
+          )
+          .subscribe((status) => {
+            if (status === "CHANNEL_ERROR") {
+              console.error("Reveal realtime subscription failed.");
+            }
+          });
+
+        // Also handle a reveal that happened just before subscription.
         if (roomData.status === "finished") {
           await loadResults(parsed.room_id);
+        } else {
+          const { data: latestRoom, error: latestError } =
+            await supabase
+              .from("rooms")
+              .select("status")
+              .eq("id", parsed.room_id)
+              .single();
+
+          if (latestError) throw latestError;
+
+          if (latestRoom.status === "finished") {
+            await loadResults(parsed.room_id);
+          }
         }
       } catch (err) {
         console.error("REVEAL PAGE LOAD ERROR:", err);
@@ -155,44 +205,47 @@ export default function RevealPage() {
 
     return () => {
       active = false;
+
+      if (channel) {
+        void supabase.removeChannel(channel);
+      }
     };
   }, [loadResults]);
 
- async function revealCase() {
-  if (!room || revealing) return;
+  async function revealCase() {
+    if (!room || revealing) return;
 
-  setRevealing(true);
-  setError("");
+    setRevealing(true);
+    setError("");
 
-  try {
-    // First, create the solution if it hasn't been created yet.
-    const { error: setupError } = await supabase.rpc(
-      "setup_case_solution",
-      {
-        p_room_id: room.room_id,
-      }
-    );
+    try {
+      const { error: setupError } = await supabase.rpc(
+        "setup_case_solution",
+        {
+          p_room_id: room.room_id,
+        }
+      );
 
-    if (setupError) throw setupError;
+      if (setupError) throw setupError;
 
-    // Now reveal the solution.
-    const { error: revealError } = await supabase.rpc(
-      "reveal_case",
-      {
-        p_room_id: room.room_id,
-      }
-    );
+      const { error: revealError } = await supabase.rpc(
+        "reveal_case",
+        {
+          p_room_id: room.room_id,
+        }
+      );
 
-    if (revealError) throw revealError;
+      if (revealError) throw revealError;
 
-    await loadResults(room.room_id);
-  } catch (err) {
-    console.error("REVEAL CASE ERROR:", err);
-    setError(getErrorMessage(err));
-  } finally {
-    setRevealing(false);
+      // The host also loads the result immediately.
+      await loadResults(room.room_id);
+    } catch (err) {
+      console.error("REVEAL CASE ERROR:", err);
+      setError(getErrorMessage(err));
+    } finally {
+      setRevealing(false);
+    }
   }
-}
 
   if (loading) {
     return (
